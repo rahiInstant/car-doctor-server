@@ -1,19 +1,16 @@
+const key = process.env;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
+const jwt = require('jsonwebtoken')
 const app = express();
-const jwt = require("jsonwebtoken");
-const cookieParser = require('cookie-parser')
+const { mongoMini } = require("./another");
 require("dotenv").config();
-const port = process.env.PORT | 8080;
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@touring.uoxy8h0.mongodb.net/?retryWrites=true&w=majority&appName=touring`;
+const port = key.PORT | 8080;
+const uri = mongoMini(key.DB_USER, key.DB_PASS, "touring", "uoxy8h0");
 
-app.use(cors({
-  origin:['http://localhost:5173'],
-  credentials:true
-}));
+app.use(cors());
 app.use(express.json());
-app.use(cookieParser())
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -29,18 +26,11 @@ async function run() {
     await client.db("admin").command({ ping: 1 });
 
     app.post("/jwt", async (req, res) => {
-      const data = req.body;
-      console.log(data);
-      const token = jwt.sign(data, process.env.ACCESS_TOKEN, {
-        expiresIn: "1h",
-      });
-      res
-        .cookie("access token", token, {
-          httpOnly: true,
-          secure: false,
-          // sameSite: false,
-        })
-        .send({ success: true });
+      const user = req.body;
+      console.log(user);
+      jwt.sign(user)
+
+      res.send(user);
     });
 
     const carDB = client.db("CarInfo");
@@ -70,7 +60,13 @@ async function run() {
 
     app.get("/user-order", async (req, res) => {
       // const query = req.query
-      console.log('access token',req.cookies["access token"])
+      // console.log("access token==", req.cookies["access token"]);
+      // console.log(req.user);
+      // console.log(req.query.email,req.user.email)
+      // if (req.query.email !== req.user.email) {
+      //   return res.status(403).send({ message: "forbidden access" });
+      // }
+
       let query = {};
       if (req.query.email) {
         query = { email: req.query.email };
