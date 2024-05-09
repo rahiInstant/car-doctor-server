@@ -2,15 +2,43 @@ const key = process.env;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
-const jwt = require('jsonwebtoken')
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 const app = express();
 const { mongoMini } = require("./another");
 require("dotenv").config();
 const port = key.PORT | 8080;
 const uri = mongoMini(key.DB_USER, key.DB_PASS, "touring", "uoxy8h0");
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
+
+async function logger(req, res, next) {
+  console.log("called", req.hostname, req.originalUrl);
+  next();
+}
+
+const verifyToken = async (req, res, next) => {
+  const token = req.cookies["access_token"];
+  if (!token) {
+    return res.status(401).send({ message: "forbidden" });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decode) => {
+    if (err) {
+      // console.log(err)
+      return res.status(401).send({ message: "unauthorized" });
+    }
+    req.user = decode;
+    next();
+  });
+};
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -27,10 +55,26 @@ async function run() {
 
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      console.log(user);
-      jwt.sign(user)
+      // console.log(user)
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
+        expiresIn: "1h",
+      });
+      // console.log({ token });
 
-      res.send(user);
+      res
+        .cookie("access_token", token, {
+          httpOnly: true,
+          secure: true,
+          // sameSite: "none",
+        })
+        .send({ success: true });
+    });
+    app.post("/logout", async (req, res) => {
+      const user = req.body;
+      console.log("from logout: ", user);
+      res
+        .clearCookie("access_token", { maxAge: 0 })
+        .send({ message: "logout" });
     });
 
     const carDB = client.db("CarInfo");
@@ -58,10 +102,15 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/user-order", async (req, res) => {
+    app.get("/user-order", logger, verifyToken, async (req, res) => {
       // const query = req.query
       // console.log("access token==", req.cookies["access token"]);
-      // console.log(req.user);
+      console.log(req.user);
+      if (req.query.email) {
+        if (req.query.email !== req.user.email) {
+          return res.status(401).send({ message: "forbidden access" });
+        }
+      }
       // console.log(req.query.email,req.user.email)
       // if (req.query.email !== req.user.email) {
       //   return res.status(403).send({ message: "forbidden access" });
